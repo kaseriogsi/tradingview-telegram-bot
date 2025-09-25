@@ -4,13 +4,23 @@ import requests
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")   # ej: 123456:ABC...
-CHAT_ID        = os.getenv("CHAT_ID")          # tu ID personal (positivo) o @canal o -100...
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")   # lo pones en Render
+CHAT_ID        = os.getenv("CHAT_ID")          # lo pones en Render
+TG_URL         = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
-TG_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
+
+@app.get("/ping")
+def ping():
+    """Prueba: envía un mensaje de test al canal."""
+    r = requests.post(TG_URL, json={"chat_id": CHAT_ID, "text": "Ping desde Render ✅"})
+    return {"telegram_status": r.status_code, "telegram_body": r.text}
 
 @app.post("/tradingview")
 def tradingview():
+    """Recibe alertas de TradingView y reenvía al canal."""
     data = request.get_json(force=True, silent=True) or {}
     symbol = data.get("symbol", "BTCUSDT")
     side   = data.get("side", "?")
@@ -19,31 +29,15 @@ def tradingview():
     tps    = data.get("tp", [])
 
     msg = (
-        f"⚡ Señal Scalping {symbol}\n"
-        f"📈 Dirección: {side}\n"
+        f"⚡ Señal {symbol}\n"
+        f"➡ Dirección: {side}\n"
         f"💰 Entrada: {entry}\n"
-        f"🛑 Stop Loss: {sl}\n"
-        f"🎯 Take Profits: {', '.join(map(str, tps))}\n"
+        f"🛑 Stop: {sl}\n"
+        f"🎯 TPs: {', '.join(map(str, tps))}\n"
     )
 
     r = requests.post(TG_URL, json={"chat_id": CHAT_ID, "text": msg})
-    # ⬇⬇ LO IMPORTANTE: verás esto en Logs de Render
+    # Logs útiles en Render
     print(">> Telegram status:", r.status_code)
     print(">> Telegram body:", r.text)
-
-    return jsonify({
-        "webhook_received": True,
-        "telegram_status": r.status_code,
-        "telegram_body": r.text
-    })
-
-@app.get("/ping")
-def ping():
-    r = requests.post(TG_URL, json={"chat_id": CHAT_ID, "text": "Ping desde Render ✅"})
-    print(">> Ping status:", r.status_code)
-    print(">> Ping body:", r.text)
-    return {"telegram_status": r.status_code, "telegram_body": r.text}
-
-@app.get("/healthz")
-def healthz():
-    return {"ok": True}
+    return jsonify({"webhook_received": True, "telegram_status": r.status_code})
