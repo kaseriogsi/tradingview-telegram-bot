@@ -4,61 +4,46 @@ import requests
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")   # lo pones en Render
-CHAT_ID        = os.getenv("CHAT_ID")          # lo pones en Render
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")   # ej: 123456:ABC...
+CHAT_ID        = os.getenv("CHAT_ID")          # tu ID personal (positivo) o @canal o -100...
 
 TG_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
 @app.post("/tradingview")
 def tradingview():
-    data = request.get_json(force=True)
-
+    data = request.get_json(force=True, silent=True) or {}
     symbol = data.get("symbol", "BTCUSDT")
     side   = data.get("side", "?")
     entry  = data.get("entry")
     sl     = data.get("sl")
     tps    = data.get("tp", [])
 
-    mensaje = f"""
-⚡ Señal Scalping {symbol}
-📈 Dirección: {side}
-💰 Entrada: {entry}
-🛑 Stop Loss: {sl}
-🎯 Take Profits: {', '.join([str(tp) for tp in tps])}
-"""
+    msg = (
+        f"⚡ Señal Scalping {symbol}\n"
+        f"📈 Dirección: {side}\n"
+        f"💰 Entrada: {entry}\n"
+        f"🛑 Stop Loss: {sl}\n"
+        f"🎯 Take Profits: {', '.join(map(str, tps))}\n"
+    )
 
-    requests.post(TG_URL, json={
-        "chat_id": CHAT_ID,
-        "text": mensaje,
-        "parse_mode": "Markdown"
+    r = requests.post(TG_URL, json={"chat_id": CHAT_ID, "text": msg})
+    # ⬇⬇ LO IMPORTANTE: verás esto en Logs de Render
+    print(">> Telegram status:", r.status_code)
+    print(">> Telegram body:", r.text)
+
+    return jsonify({
+        "webhook_received": True,
+        "telegram_status": r.status_code,
+        "telegram_body": r.text
     })
 
-    return jsonify({"ok": True})
+@app.get("/ping")
+def ping():
+    r = requests.post(TG_URL, json={"chat_id": CHAT_ID, "text": "Ping desde Render ✅"})
+    print(">> Ping status:", r.status_code)
+    print(">> Ping body:", r.text)
+    return {"telegram_status": r.status_code, "telegram_body": r.text}
 
-
-@app.post("/tg-webhook")
-def tg_webhook():
-    update = request.get_json(force=True)
-    print("Update recibido:", update)  # aparece en Logs de Render
-
-    msg = update.get("message") or {}
-    chat_id = msg.get("chat", {}).get("id")
-    text = (msg.get("text") or "").strip().lower()
-
-    if not chat_id or not text:
-        return jsonify({"ok": True})
-
-    if text == "/start":
-        reply = "👋 ¡Hola! Estoy activo.\nUsa /help para ver opciones."
-    elif text == "/help":
-        reply = "🤖 Comandos:\n/start — comprobar que el bot está vivo\n/help — esta ayuda"
-    else:
-        reply = "Recibido ✅"
-
-    r = requests.post(
-        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-        json={"chat_id": chat_id, "text": reply}
-    )
-    print("Telegram status:", r.status_code, "body:", r.text)
-
-    return jsonify({"ok": True})
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
